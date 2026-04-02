@@ -1,0 +1,142 @@
+---
+title: 'Contributing'
+description: 'How to contribute to the github/lock Action, including development setup, testing, and pull request requirements.'
+---
+
+All contributions are welcome. This page explains how to set up a local development environment, run the test suite, and prepare your changes for review.
+
+The source repository is at [github/lock](https://github.com/github/lock).
+
+## Development setup
+
+<Steps>
+  <Step title="Fork and clone the repository">
+    Fork the repository on GitHub, then clone your fork locally:
+
+    ```bash
+    git clone https://github.com/<your-username>/lock.git
+    cd lock
+    ```
+  </Step>
+
+  <Step title="Install dependencies">
+    ```bash
+    npm install
+    ```
+  </Step>
+
+  <Step title="Verify the setup by running the test suite">
+    ```bash
+    npm run ci-test
+    ```
+
+    All tests should pass on a clean checkout.
+  </Step>
+</Steps>
+
+## Making changes
+
+<Steps>
+  <Step title="Create a branch">
+    Work in a dedicated branch rather than directly on `main`:
+
+    ```bash
+    git checkout -b my-feature-or-fix
+    ```
+  </Step>
+
+  <Step title="Write or update tests">
+    The project uses [Jest](https://jestjs.io/) for testing. Every change to source code in `src/` must be accompanied by corresponding test updates.
+
+    <Warning>
+    100% line coverage is required. Jest is configured with a coverage threshold that will fail the build if any lines are uncovered. Your pull request will not be merged without full coverage.
+    </Warning>
+
+    Test files live alongside source files. For example, `src/functions/lock.js` has a corresponding test at `__tests__/functions/lock.test.js`.
+  </Step>
+
+  <Step title="Run the test suite">
+    ```bash
+    npm run ci-test
+    ```
+
+    This command runs Jest with coverage reporting. Review the output to confirm 100% line coverage before continuing.
+  </Step>
+
+  <Step title="Run the linter">
+    ```bash
+    npm run lint
+    ```
+
+    Fix any reported linting errors before opening a pull request.
+  </Step>
+
+  <Step title="Run the formatter check">
+    ```bash
+    npm run format-check
+    ```
+
+    If formatting issues are found, run the formatter to fix them automatically:
+
+    ```bash
+    npm run format
+    ```
+  </Step>
+
+  <Step title="Package the Action for distribution">
+    The Action runs from `dist/index.js`, which is a bundled version of the source. You must rebuild this file before opening a pull request:
+
+    ```bash
+    npm run package
+    ```
+
+    Alternatively, run all checks and packaging in one command:
+
+    ```bash
+    npm run all
+    ```
+
+    The `npm run all` command runs the formatter, linter, and packager in sequence.
+
+    <Note>
+    Always commit the updated `dist/index.js` along with your source changes. Pull requests with an outdated `dist/` will fail the package-check CI workflow.
+    </Note>
+  </Step>
+
+  <Step title="Open a pull request">
+    Push your branch and open a pull request against `github/lock`. Notify the maintainers for peer review. Once approved, the maintainers will merge and create a new release.
+  </Step>
+</Steps>
+
+## Quick reference
+
+**Run tests:**
+```bash
+npm run ci-test
+```
+
+**Run linter:**
+```bash
+npm run lint
+```
+
+**Check formatting:**
+```bash
+npm run format-check
+```
+
+**Package for distribution:**
+```bash
+npm run package
+```
+
+**Run everything (format check + lint + package):**
+```bash
+npm run all
+```
+
+## Coverage requirement
+
+Jest is configured to enforce 100% line coverage. If your changes introduce code that is not covered by tests, the `ci-test` command will exit with a non-zero status and display a coverage summary showing which lines are missing.
+
+There are no exceptions to this requirement. If a code path is intentionally unreachable, mark it with `/* istanbul ignore next */` and document the reason in a comment.

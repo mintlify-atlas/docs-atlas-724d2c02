@@ -1,0 +1,113 @@
+---
+title: "Introduction"
+description: "Learn what the Lock Action is, why it exists, and how it coordinates deployments across your GitHub workflows."
+---
+
+## What is the Lock Action?
+
+`github/lock` is a standalone GitHub Action that prevents multiple deployments from running at the same time. It gives you explicit control over when deployments are allowed to proceed by managing a deployment lock that any workflow in your repository can check, claim, or release.
+
+The Action is designed as a companion to the [github/branch-deploy](https://github.com/github/branch-deploy) Action, but it works independently and can be integrated into any deployment workflow.
+
+## The problem it solves
+
+Without deployment coordination, two engineers can trigger deployments simultaneously — to the same environment, from different branches. The result is a race condition: both deployments write conflicting state, the later one may overwrite a partially-applied earlier one, and rollbacks become unreliable.
+
+The Lock Action solves this by providing a single source of truth for whether a deployment is in progress. Only one actor can hold the lock for a given environment at a time. Any other deployment attempt either waits or fails fast with a clear message about who holds the lock and why.
+
+Common scenarios where this matters:
+
+- Two engineers both comment `.deploy` on separate PRs at the same time
+- A scheduled pipeline fires while a manual deploy is in progress
+- A hotfix deploy is triggered while a feature release is mid-flight
+- You need to freeze all deployments during an incident or maintenance window
+
+## Relationship to github/branch-deploy
+
+If you are using [github/branch-deploy](https://github.com/github/branch-deploy), that Action already includes built-in locking behavior. `github/lock` exists for cases where you need more control — for example, locking from a scheduled workflow, conditionally locking when tests are failing, or locking across multiple repositories from a single workflow.
+
+<Note>
+If you arrived here from the `github/branch-deploy` documentation, you are in the right place. This Action provides the same locking primitives, exposed as a standalone, composable step.
+</Note>
+
+## Two modes of operation
+
+The Lock Action supports two distinct modes:
+
+<CardGroup cols={2}>
+  <Card title="IssueOps" icon="comment">
+    Triggered by comments on a pull request. Engineers type `.lock` or `.unlock` in a PR comment to claim or release the deployment lock for an environment.
+  </Card>
+  <Card title="Headless" icon="terminal">
+    Triggered programmatically by setting the `mode` input to `lock`, `unlock`, or `check`. Used in scheduled workflows, workflow dispatch events, or conditional logic inside a job.
+  </Card>
+</CardGroup>
+
+### IssueOps mode
+
+When the `mode` input is omitted, the Action assumes it is running in response to a pull request comment. It reads the comment body and checks for the configured trigger strings (`.lock` and `.unlock` by default).
+
+When a `.lock` comment is detected:
+
+1. An emoji reaction is added to the comment to acknowledge the trigger.
+2. The commenter's permissions are validated.
+3. The target environment is resolved from the comment body.
+4. The lock is claimed and a sticky comment is posted to the PR summarizing the lock state.
+
+### Headless mode
+
+When `mode` is set explicitly, the Action skips comment parsing entirely and executes the operation directly. This is the right choice for:
+
+- `workflow_dispatch` events where a human triggers a lock from the Actions UI
+- Conditional locking based on test results or deployment status
+- Scheduled lock windows that freeze deployments across all repositories
+
+## How lock state is stored
+
+Lock state is stored directly in your repository using Git branches and a JSON file — no external services or databases required.
+
+When a lock is claimed for an environment, the Action:
+
+1. Creates a branch named `<environment>-branch-deploy-lock` (e.g., `production-branch-deploy-lock`)
+2. Commits a `lock.json` file to that branch
+
+The `lock.json` file contains the full lock record:
+
+```json
+{
+  "reason": "deploying hotfix for #1234",
+  "branch": "fix/critical-bug",
+  "created_at": "2024-03-15T10:30:00.000Z",
+  "created_by": "octocat",
+  "sticky": true,
+  "environment": "production",
+  "global": false,
+  "unlock_command": ".unlock production",
+  "link": "https://github.com/owner/repo/pull/42#issuecomment-123456789"
+}
+```
+
+For a global lock (which blocks all environments), the branch name is `global-branch-deploy-lock`.
+
+<Tip>
+Because lock state lives in Git, it is auditable. Every lock and unlock creates a commit, giving you a full history of who locked what and when.
+</Tip>
+
+## Required permissions
+
+The permissions your workflow needs depend on how you are using the Action:
+
+| Operation | Required permission |
+| --------- | ------------------- |
+| Lock or unlock (IssueOps or headless) | `contents: write`, `pull-requests: write` (IssueOps only) |
+| Check only (`mode: check`) | `contents: read` |
+
+<Warning>
+Without `contents: write`, the Action cannot create or delete the lock branch. Lock and unlock operations will fail if this permission is missing.
+</Warning>
+
+## Next steps
+
+<Card title="Quickstart" icon="rocket" href="/quickstart">
+  Set up IssueOps locking in your repository in under five minutes.
+</Card>

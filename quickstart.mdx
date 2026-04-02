@@ -1,80 +1,248 @@
 ---
 title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+description: "Get deployment locking working in your repository in minutes using IssueOps comments or headless workflow dispatch."
 ---
 
-## Get started in three steps
+## Prerequisites
 
-Get your documentation site running locally and make your first customization.
+- A GitHub repository where you have permission to create workflow files
+- The repository must allow GitHub Actions to create and push to branches (check **Settings → Actions → General → Workflow permissions** and enable "Read and write permissions")
 
-### Step 1: Set up your local environment
+## IssueOps setup
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+This example wires up `.lock` and `.unlock` as PR comment triggers. Any collaborator with write access to the repository can claim or release the deployment lock by commenting on a pull request.
 
-### Step 2: Deploy your changes
+<Steps>
+  <Step title="Create the workflow file">
+    Create `.github/workflows/lock-or-unlock.yml` in your repository:
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    ```yaml
+    name: lock-or-unlock
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+    on:
+      issue_comment:
+        types: [created]
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+    permissions:
+      pull-requests: write
+      contents: write
 
-### Step 3: Go live
+    jobs:
+      lock-or-unlock:
+        if: ${{ github.event.issue.pull_request }}
+        runs-on: ubuntu-latest
+        steps:
+          - uses: github/lock@vX.X.X
+            id: lock
+    ```
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+    The `if` condition restricts the job to comments on pull requests only — issue comments on regular issues are ignored.
+  </Step>
 
-## Next steps
+  <Step title="Open a pull request">
+    Push a branch and open a pull request. The workflow will not trigger until a comment is posted.
+  </Step>
 
-Now that you have your docs running, explore these key features:
+  <Step title="Claim the lock">
+    Comment `.lock` on the pull request. Within seconds:
 
-<CardGroup cols={2}>
+    - The Action adds an 👀 reaction to your comment to confirm it was detected
+    - The lock is written to a `production-branch-deploy-lock` Git branch in your repository
+    - A sticky comment is posted to the PR:
 
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
+    ```
+    ### 🔒 Deployment Lock Claimed
 
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
+    You are now the only user that can trigger deployments to the `production`
+    environment until the deployment lock is removed
 
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
+    > This lock is _sticky_ and will persist until someone runs `.unlock production`
+    ```
 
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
+    <Note>
+    The lock is environment-scoped. The default environment is `production`. To lock a different environment, comment `.lock staging` or `.lock development`.
+    </Note>
+  </Step>
 
-</CardGroup>
+  <Step title="Verify the lock">
+    Comment `.wcid` ("where can I deploy?") on any PR to check the current lock state. The Action will reply with the lock details:
 
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>
+    ```
+    ### Lock Details 🔒
+
+    The deployment lock is currently claimed by __octocat__
+
+    - __Reason__: `null`
+    - __Branch__: `fix/critical-bug`
+    - __Created At__: `2024-03-15T10:30:00.000Z`
+    - __Created By__: `octocat`
+    - __Sticky__: `true`
+    - __Environment__: `production`
+
+    The current lock has been active for `0d:2h:15m:30s`
+    ```
+  </Step>
+
+  <Step title="Release the lock">
+    Comment `.unlock` on any pull request to release the lock. The `production-branch-deploy-lock` branch is deleted and deployments are unblocked.
+
+    <Tip>
+    To add a reason when claiming the lock, append `--reason` to your comment: `.lock --reason deploying hotfix for #1234`
+    </Tip>
+  </Step>
+</Steps>
+
+## Locking a specific environment
+
+By default the Action targets the `production` environment. To support multiple environments, configure `environment_targets`:
+
+```yaml
+- uses: github/lock@vX.X.X
+  id: lock
+  with:
+    environment_targets: "production,staging,development"
+```
+
+Commenters can then target a specific environment:
+
+| Comment | Effect |
+| ------- | ------ |
+| `.lock` | Lock the default environment (`production`) |
+| `.lock staging` | Lock the `staging` environment |
+| `.lock development` | Lock the `development` environment |
+| `.unlock staging` | Unlock the `staging` environment |
+| `.lock --global` | Lock all environments simultaneously |
+
+## Headless setup (workflow dispatch)
+
+For programmatic locking — from scheduled workflows, conditional logic, or a manual UI trigger — use headless mode by setting the `mode` input.
+
+<Tabs>
+  <Tab title="Lock via workflow dispatch">
+    ```yaml
+    name: lock-dispatch
+
+    on:
+      workflow_dispatch:
+        inputs:
+          reason:
+            description: "Reason for claiming the deployment lock"
+            required: false
+          environment:
+            description: "Environment to lock (production, staging, etc.)"
+            required: true
+            default: "production"
+          mode:
+            description: "Operation: lock, unlock, or check"
+            required: true
+            default: "lock"
+
+    permissions:
+      contents: write
+
+    jobs:
+      lock:
+        runs-on: ubuntu-latest
+        steps:
+          - uses: github/lock@vX.X.X
+            id: lock
+            with:
+              mode: ${{ github.event.inputs.mode }}
+              reason: ${{ github.event.inputs.reason }}
+              environment: ${{ github.event.inputs.environment }}
+    ```
+
+    Trigger this workflow from the GitHub Actions UI (**Actions → lock-dispatch → Run workflow**) and fill in the inputs. No pull request or comment is required.
+  </Tab>
+  <Tab title="Check lock status">
+    ```yaml
+    name: check-lock
+
+    on:
+      workflow_dispatch:
+
+    permissions:
+      contents: read
+
+    jobs:
+      check:
+        runs-on: ubuntu-latest
+        steps:
+          - uses: github/lock@vX.X.X
+            id: lock
+            with:
+              mode: check
+
+          - name: Print lock status
+            run: |
+              echo "Locked: ${{ steps.lock.outputs.locked }}"
+              echo "Locked by: ${{ steps.lock.outputs.created_by }}"
+              echo "Lock branch: ${{ steps.lock.outputs.branch }}"
+    ```
+
+    The `check` mode only reads the lock file and does not modify any state. It requires only `contents: read`.
+  </Tab>
+  <Tab title="Conditional lock">
+    ```yaml
+    name: lock-on-failure
+
+    on:
+      workflow_run:
+        workflows: ["test"]
+        types: [completed]
+
+    permissions:
+      contents: write
+
+    jobs:
+      lock-if-failing:
+        if: ${{ github.event.workflow_run.conclusion == 'failure' }}
+        runs-on: ubuntu-latest
+        steps:
+          - uses: github/lock@vX.X.X
+            id: lock
+            with:
+              mode: lock
+              reason: "Automated lock: test suite is failing"
+              environment: production
+    ```
+
+    This workflow automatically claims the production lock whenever the test suite fails, preventing deployments until the lock is manually released.
+  </Tab>
+</Tabs>
+
+## Action outputs
+
+After the Action runs, you can reference its outputs in subsequent steps:
+
+```yaml
+- uses: github/lock@vX.X.X
+  id: lock
+  with:
+    mode: check
+
+- name: Gate on lock status
+  if: ${{ steps.lock.outputs.locked == 'true' }}
+  run: |
+    echo "Deployment is locked by ${{ steps.lock.outputs.created_by }}"
+    echo "Reason: ${{ steps.lock.outputs.reason }}"
+    exit 1
+```
+
+Key outputs:
+
+| Output | Description |
+| ------ | ----------- |
+| `triggered` | `"true"` if an IssueOps trigger was matched |
+| `headless` | `"true"` if the Action ran in headless mode |
+| `locked` | `"true"` if a lock exists (only set in `check` mode) |
+| `created_by` | GitHub username of the lock owner (`check` mode) |
+| `created_at` | ISO 8601 timestamp when the lock was claimed (`check` mode) |
+| `reason` | Reason provided when the lock was claimed (`check` mode) |
+| `branch` | Branch that holds the lock (`check` mode) |
+| `global_lock_claimed` | `"true"` if a global lock was just claimed |
+| `global_lock_released` | `"true"` if a global lock was just released |
+
+<Warning>
+The `locked`, `created_by`, `created_at`, `reason`, and `branch` outputs are only populated when `mode` is set to `check`. In lock and unlock operations these outputs are empty.
+</Warning>

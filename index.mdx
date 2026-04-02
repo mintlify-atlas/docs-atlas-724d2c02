@@ -1,97 +1,66 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "Lock Action"
+description: "A GitHub Action for deployment locking — prevent concurrent deployments and coordinate access across environments."
 ---
 
-## Setting up
+The Lock Action gives you fine-grained control over deployment locks for your GitHub repositories. Whether you need to block deployments during a maintenance window, coordinate access to production, or automate locking in CI pipelines, this Action has you covered.
 
-Get your documentation site up and running in minutes.
-
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get the Action running in your repository in under 5 minutes
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="IssueOps usage" icon="comment" href="/usage/issueops">
+    Lock and unlock via PR comments with `.lock` and `.unlock`
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="Headless mode" icon="terminal" href="/usage/headless">
+    Programmatically control locks from workflow dispatch or automation
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="Configuration reference" icon="sliders" href="/configuration/inputs">
+    Full reference for all inputs and outputs
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## What is a deployment lock?
 
-Everything you need to create world-class documentation.
+A deployment lock prevents multiple deployments from running at the same time. When a lock is held, only the owner of that lock can trigger deployments to the locked environment. This is critical for:
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+- **Coordinated releases** — Ensure only one person deploys to production at a time
+- **Maintenance windows** — Block all deployments during planned downtime
+- **Emergency holds** — Quickly freeze deployments when an incident is in progress
+- **CI gate integration** — Automatically pause deployments when tests are failing
 
-## Need inspiration?
+## How it works
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+The Lock Action stores lock state as a JSON file on a dedicated Git branch in your repository. No external infrastructure is required — locks live entirely within GitHub.
+
+<Steps>
+  <Step title="Add the Action to your workflow">
+    Reference `github/lock@vX.X.X` in your workflow file and configure the desired mode and environment.
+  </Step>
+  <Step title="Trigger a lock">
+    Comment `.lock` on a pull request (IssueOps mode) or dispatch a workflow with `mode: lock` (headless mode).
+  </Step>
+  <Step title="Deploy with confidence">
+    Only the lock owner can deploy while the lock is active. Others will see a clear message explaining who holds the lock.
+  </Step>
+  <Step title="Release the lock">
+    Comment `.unlock` on the PR or dispatch a workflow with `mode: unlock` to release the lock and allow others to deploy.
+  </Step>
+</Steps>
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="Multi-environment support" icon="layer-group" href="/concepts/environments">
+    Manage independent locks per environment — production, staging, development, and more
+  </Card>
+  <Card title="Global locks" icon="globe" href="/concepts/global-locks">
+    Lock all environments simultaneously with a single `--global` flag
+  </Card>
+  <Card title="Lock status checks" icon="magnifying-glass" href="/usage/checking-locks">
+    Query lock state and read structured outputs for use in downstream jobs
+  </Card>
+  <Card title="Examples" icon="book-open" href="/resources/examples">
+    Ready-to-use workflow examples for common scenarios
+  </Card>
+</CardGroup>

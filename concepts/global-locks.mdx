@@ -1,0 +1,148 @@
+---
+title: "Global locks"
+description: "Learn how global locks freeze all environments simultaneously and when to use them for maintenance windows or incident response."
+keywords: ["global lock", "global", "--global", "maintenance", "freeze", "all environments"]
+---
+
+A global lock is a special lock that blocks **all environments** at once. While an environment lock protects a single target (e.g., `production`), a global lock prevents any user — except the lock owner — from locking or deploying to any environment in the repository.
+
+## How global locks differ from environment locks
+
+<CardGroup cols={2}>
+  <Card title="Environment lock" icon="layers">
+    Stored on `{environment}-branch-deploy-lock`. Blocks only the named environment. Other environments remain fully accessible to all users.
+  </Card>
+  <Card title="Global lock" icon="globe">
+    Stored on `global-branch-deploy-lock`. Blocks every environment simultaneously. Only the global lock owner can proceed with any lock or deployment operation.
+  </Card>
+</CardGroup>
+
+The `global-branch-deploy-lock` branch is always checked **first**, before any environment-specific lock branch. If a global lock is active, the Action short-circuits immediately for any user who is not the lock owner.
+
+## Claiming a global lock
+
+<Tabs>
+  <Tab title="IssueOps">
+    Post a comment on any pull request using the `--global` flag:
+
+    ```bash
+    .lock --global
+    ```
+
+    You can also include a reason:
+
+    ```bash
+    .lock --global --reason "Emergency maintenance window - all deploys frozen"
+    ```
+  </Tab>
+  <Tab title="Headless mode">
+    Set `environment: global` in your workflow step:
+
+    ```yaml
+    - uses: github/lock@vX.X.X
+      with:
+        mode: lock
+        environment: global
+        reason: "Emergency maintenance window"
+    ```
+  </Tab>
+</Tabs>
+
+When a global lock is successfully claimed, the `global_lock_claimed` output is set to `"true"`.
+
+## Releasing a global lock
+
+<Tabs>
+  <Tab title="IssueOps">
+    Post a comment on any pull request:
+
+    ```bash
+    .unlock --global
+    ```
+  </Tab>
+  <Tab title="Headless mode">
+    ```yaml
+    - uses: github/lock@vX.X.X
+      with:
+        mode: unlock
+        environment: global
+    ```
+  </Tab>
+</Tabs>
+
+When the global lock is released, the `global_lock_released` output is set to `"true"` and the `global-branch-deploy-lock` branch is deleted from the repository.
+
+## Checking for a global lock
+
+You can check whether a global lock is currently active without modifying any state:
+
+```yaml
+- uses: github/lock@vX.X.X
+  id: lock
+  with:
+    mode: check
+    environment: global
+
+- name: Check result
+  run: echo "Locked: ${{ steps.lock.outputs.locked }}"
+```
+
+The `locked` output is `"true"` if a global lock exists, `"false"` if not. The `lock_environment` output will be `"global"` when a global lock is active.
+
+<Note>
+The `check` mode always inspects the global lock branch first. If a global lock exists, `locked` is `"true"` and `lock_environment` is `"global"` — even if you specified a different environment in the `environment` input.
+</Note>
+
+## Global lock priority
+
+The Action enforces a strict check order to ensure global locks are always respected:
+
+<Steps>
+  <Step title="Check global lock branch">
+    Before evaluating any environment-specific request, the Action reads `lock.json` from `global-branch-deploy-lock` (if the branch exists).
+  </Step>
+  <Step title="Evaluate ownership">
+    If a global lock exists and the requestor is **not** the owner, the request is immediately denied with details about the global lock — regardless of which environment was targeted.
+  </Step>
+  <Step title="Continue if owner or no global lock">
+    If no global lock exists, or the requestor is the global lock owner, the Action continues to check the environment-specific lock branch.
+  </Step>
+</Steps>
+
+<Warning>
+A global lock blocks all other users from performing **any** lock or deployment operation across **all** environments. Use this power carefully — always set a reason so your team understands why deployments are frozen.
+</Warning>
+
+## When to use global locks
+
+<AccordionGroup>
+  <Accordion title="Scheduled maintenance windows">
+    When you need to take the deployment pipeline offline for infrastructure work, a global lock ensures nothing can be deployed during the maintenance period — even if a team member is unaware of the window.
+  </Accordion>
+  <Accordion title="Major incident response">
+    During a production incident, a global lock prevents new deployments from being triggered while the on-call team investigates. This avoids the risk of a routine deploy making the incident worse.
+  </Accordion>
+  <Accordion title="Cross-environment release coordination">
+    For major releases that require coordinated deploys across all environments in a specific sequence, a global lock lets the release manager control the order without individual environment lock races.
+  </Accordion>
+</AccordionGroup>
+
+## Global lock outputs reference
+
+| Output | Value | When set |
+|---|---|---|
+| `global_lock_claimed` | `"true"` | A global lock was successfully acquired |
+| `global_lock_released` | `"true"` | The global lock was successfully released |
+| `locked` | `"true"` or `"false"` | Only in `check` mode |
+| `lock_environment` | `"global"` | Only in `check` mode when a global lock is active |
+
+## Related concepts
+
+<CardGroup cols={2}>
+  <Card title="How locks work" icon="lock" href="/concepts/how-locks-work">
+    Understand the Git branch and lock.json storage mechanism that backs both environment and global locks.
+  </Card>
+  <Card title="Environments" icon="layers" href="/concepts/environments">
+    Learn how individual environment locks work and how to configure custom environment targets.
+  </Card>
+</CardGroup>

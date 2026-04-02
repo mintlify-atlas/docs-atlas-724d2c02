@@ -1,0 +1,218 @@
+---
+title: "IssueOps usage"
+description: "Trigger deployment locks and unlocks by commenting on a pull request."
+keywords: ["lock", "unlock", "issueops", "pull request", "comment", "deployment"]
+---
+
+IssueOps mode lets you manage deployment locks by writing commands in PR comments. No workflow dispatch, no scripts — just comment on the pull request and the Action handles the rest.
+
+## How it works
+
+When someone posts a comment on a pull request, the `issue_comment` event fires and the workflow checks whether the comment matches a lock trigger (`.lock`, `.unlock`, or `.wcid`). If it does, the Action reacts to the comment with the configured emoji (default: 👀 eyes) to signal that the trigger was detected, then processes the command and posts a follow-up comment with the result.
+
+## Setup
+
+Add this workflow to your repository:
+
+```yaml
+name: lock-or-unlock
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  pull-requests: write
+  contents: write
+
+jobs:
+  lock-or-unlock:
+    if: ${{ github.event.issue.pull_request }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: github/lock@vX.X.X
+        id: lock
+        with:
+          environment_targets: "production,development,staging"
+```
+
+<Note>
+The `if: ${{ github.event.issue.pull_request }}` condition is required. Without it, the workflow will also run on issue comments, where there is no branch to lock.
+</Note>
+
+### Required permissions
+
+| Permission | Level | Reason |
+|---|---|---|
+| `pull-requests` | `write` | Post comments back to the PR |
+| `contents` | `write` | Create and delete lock branches |
+
+## Commands
+
+### `.lock` — claim the lock
+
+Locks the current PR's branch to the default environment (`production` unless configured otherwise).
+
+```
+.lock
+```
+
+The Action will:
+1. React to your comment with 👀
+2. Verify you have write permissions on the repository
+3. Attempt to claim the lock for the environment
+4. Post a comment confirming the lock was claimed, or explaining why it wasn't
+
+If the lock was successfully claimed, you'll see a comment like:
+
+> **🔒 Deployment Lock Claimed**
+>
+> You are now the only user that can trigger deployments to the `production` environment until the deployment lock is removed.
+>
+> This lock is _sticky_ and will persist until someone runs `.unlock production`
+
+If another user already holds the lock, you'll see a comment explaining who holds it, when it was claimed, and how long it has been active.
+
+---
+
+### `.unlock` — release the lock
+
+Releases the lock for the default environment.
+
+```
+.unlock
+```
+
+If the lock exists, the Action posts:
+
+> **🔓 Deployment Lock Removed**
+>
+> The `production` deployment lock has been successfully removed.
+
+If no lock is set, the Action responds with a note instead of failing.
+
+---
+
+### `.wcid` — check lock details
+
+The `.wcid` command (short for "where can I deploy?") returns details about the current lock without modifying it.
+
+```
+.wcid
+```
+
+Example response when a lock is held:
+
+> **Lock Details 🔒**
+>
+> The deployment lock is currently claimed by **octocat**
+>
+> - **Reason**: `deploying hotfix`
+> - **Branch**: `fix/critical-bug`
+> - **Created At**: `2024-01-15T14:23:00.000Z`
+> - **Created By**: `octocat`
+> - **Comment Link**: _(link to the triggering comment)_
+>
+> The current lock has been active for `0d:2h:15m:0s`
+>
+> If you need to release the lock, please comment `.unlock production`
+
+You can also get lock details inline with the `--info` or `--details` flags on any `.lock` command:
+
+```
+.lock --info
+.lock --details
+.lock production --details
+```
+
+<Tip>
+The lock info alias is configurable. If `.wcid` doesn't suit your team, set `lock_info_alias: ".info"` or any other alias in the workflow inputs.
+</Tip>
+
+## Environment-specific locking
+
+When multiple environments are configured via `environment_targets`, you can lock or unlock a specific environment by appending its name to the command.
+
+```
+.lock production
+.lock staging
+.lock development
+```
+
+```
+.unlock production
+.unlock staging
+```
+
+If you omit the environment, the Action uses the default (`environment` input, which defaults to `production`).
+
+<Warning>
+If you type an environment name that is not listed in `environment_targets`, the Action posts an error comment listing the valid targets. No lock is claimed.
+</Warning>
+
+## Global locks
+
+The `--global` flag locks **all environments at once**, regardless of which environments are configured.
+
+```
+.lock --global
+```
+
+A global lock prevents any user (other than the lock owner) from deploying to any environment. The response comment makes this explicit:
+
+> **🔒 Deployment Lock Claimed**
+>
+> This is a **global** deploy lock - All environments are now locked
+
+To release a global lock:
+
+```
+.unlock --global
+```
+
+## The `--reason` flag
+
+Attach a reason to your lock so teammates know why deployments are paused:
+
+```
+.lock --reason "deploying critical fix"
+.lock production --reason "rolling back bad release"
+.lock --global --reason "scheduled maintenance window"
+```
+
+The reason is stored in the lock file and shown in any subsequent `.wcid` or lock detail responses.
+
+## Reactions
+
+When the Action detects a valid trigger in a PR comment, it immediately reacts to that comment with an emoji (default: 👀). This gives instant feedback that the trigger was recognized, even before the workflow finishes.
+
+You can change the reaction emoji with the `reaction` input:
+
+```yaml
+with:
+  reaction: "rocket"
+```
+
+Any [GitHub reaction type](https://docs.github.com/en/rest/reactions) is valid (`+1`, `-1`, `laugh`, `confused`, `heart`, `hooray`, `rocket`, `eyes`).
+
+## Configuration reference
+
+| Input | Default | Description |
+|---|---|---|
+| `environment` | `production` | Default environment used when no explicit target is given in a comment |
+| `environment_targets` | `production,development,staging` | Comma-separated list of valid environments |
+| `lock_trigger` | `.lock` | Comment prefix that triggers the lock command |
+| `unlock_trigger` | `.unlock` | Comment prefix that triggers the unlock command |
+| `lock_info_alias` | `.wcid` | Shortcut command to get current lock details |
+| `global_lock_flag` | `--global` | Flag to use with `.lock` to lock all environments |
+| `reaction` | `eyes` | Emoji reaction added to detected trigger comments |
+| `prefix_only` | `true` | When `true`, the trigger must appear at the start of the comment |
+
+<CardGroup cols={2}>
+  <Card title="Headless mode" icon="terminal" href="/usage/headless">
+    Use the Lock Action programmatically without PR comments.
+  </Card>
+  <Card title="Checking lock status" icon="circle-check" href="/usage/checking-locks">
+    Query lock state and use outputs in downstream steps.
+  </Card>
+</CardGroup>

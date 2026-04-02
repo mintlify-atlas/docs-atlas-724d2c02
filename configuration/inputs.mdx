@@ -1,0 +1,130 @@
+---
+title: "Inputs"
+description: "All available input parameters for the github/lock Action."
+---
+
+Configure the Lock Action by passing inputs in the `with:` block of your workflow step.
+
+## Authentication
+
+<ParamField path="github_token" type="string" required default="${{ github.token }}">
+  The GitHub token used to authenticate API calls. GitHub Actions provides this automatically — you do not need to set it explicitly in most cases.
+
+  <Note>If you need to post comments or add reactions across repository boundaries, you may supply a personal access token or a GitHub App token with the appropriate scopes.</Note>
+</ParamField>
+
+## Environment
+
+<ParamField path="environment" type="string" required default="production">
+  The environment to apply locking actions to. In IssueOps mode this acts as the default environment when no environment is specified in the comment. In headless mode this is the explicit environment that will be locked, unlocked, or checked.
+
+  Use `"global"` to target the global lock, which spans all environments.
+
+  ```yaml
+  with:
+    environment: production
+  ```
+</ParamField>
+
+<ParamField path="environment_targets" type="string" default="production,development,staging">
+  Comma-separated list of valid environment names recognized in IssueOps comments. When a user runs `.lock development`, the Action validates `development` against this list before proceeding.
+
+  ```yaml
+  with:
+    environment_targets: "production,development,staging,canary"
+  ```
+</ParamField>
+
+## IssueOps triggers
+
+<ParamField path="lock_trigger" type="string" default=".lock">
+  The comment string that triggers a lock operation in IssueOps mode. The Action scans incoming pull request comments for this value.
+
+  ```yaml
+  with:
+    lock_trigger: ".lock"
+  ```
+</ParamField>
+
+<ParamField path="unlock_trigger" type="string" default=".unlock">
+  The comment string that triggers an unlock operation in IssueOps mode.
+
+  ```yaml
+  with:
+    unlock_trigger: ".unlock"
+  ```
+</ParamField>
+
+<ParamField path="lock_info_alias" type="string" default=".wcid">
+  An alias comment string that returns details about the current lock without modifying it. The default `.wcid` stands for "where can I deploy?" — a quick way for contributors to check lock status from a PR comment.
+
+  ```yaml
+  with:
+    lock_info_alias: ".wcid"
+  ```
+</ParamField>
+
+<ParamField path="global_lock_flag" type="string" default="--global">
+  The flag appended to a lock or unlock IssueOps comment to target the global lock instead of a specific environment. For example, a comment of `.lock --global` claims the global lock.
+
+  ```yaml
+  with:
+    global_lock_flag: "--global"
+  ```
+</ParamField>
+
+<ParamField path="prefix_only" type="string" default="true">
+  Controls where the trigger string must appear in the comment body.
+
+  - `"true"` — the trigger must appear at the start of the comment (prefix match).
+  - `"false"` — the trigger can appear anywhere in the comment body.
+
+  <Warning>Setting this to `"false"` increases the chance of accidental trigger matches in general discussion comments.</Warning>
+
+  ```yaml
+  with:
+    prefix_only: "true"
+  ```
+</ParamField>
+
+<ParamField path="reaction" type="string" default="eyes">
+  The emoji reaction added to a pull request comment when the Action detects a trigger. This gives immediate visual feedback to the commenter. Set to an empty string to disable reactions.
+
+  Valid values follow the GitHub reaction API: `+1`, `-1`, `laugh`, `confused`, `heart`, `hooray`, `rocket`, `eyes`.
+
+  ```yaml
+  with:
+    reaction: "eyes"
+  ```
+</ParamField>
+
+## Headless mode
+
+<ParamField path="mode" type="string">
+  Set this input to run the Action in headless (non-interactive) mode, bypassing IssueOps comment parsing entirely. Accepted values:
+
+  | Value | Effect |
+  |-------|--------|
+  | `lock` | Claim the deployment lock for the configured environment |
+  | `unlock` | Release the deployment lock for the configured environment |
+  | `check` | Check whether a lock exists and expose its details as outputs |
+
+  When `mode` is omitted, the Action defaults to IssueOps mode and expects to be triggered by a pull request comment event.
+
+  ```yaml
+  with:
+    mode: check
+    environment: production
+  ```
+</ParamField>
+
+<ParamField path="reason" type="string">
+  A human-readable reason for claiming the deployment lock. Only used when `mode` is set to `lock`. The reason is stored with the lock and surfaced to other users who query lock status.
+
+  ```yaml
+  with:
+    mode: lock
+    environment: production
+    reason: "Deploying hotfix for incident #42"
+  ```
+</ParamField>

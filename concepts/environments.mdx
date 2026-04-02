@@ -1,0 +1,120 @@
+---
+title: "Environments"
+description: "Learn how the Lock Action manages independent locks per environment and how to configure custom environment targets."
+keywords: ["environments", "production", "staging", "development", "environment_targets", "multi-environment"]
+---
+
+The Lock Action supports multi-environment locking out of the box. Each environment is completely independent — locking `production` has no effect on `staging`, and any user can hold locks on multiple environments simultaneously.
+
+## How environment locks work
+
+Every environment gets its own dedicated Git branch and `lock.json` file. The branches are named using a consistent pattern that makes them easy to identify:
+
+| Environment | Lock branch |
+|---|---|
+| `production` | `production-branch-deploy-lock` |
+| `staging` | `staging-branch-deploy-lock` |
+| `development` | `development-branch-deploy-lock` |
+| `canary` | `canary-branch-deploy-lock` |
+| Any custom env | `{environment}-branch-deploy-lock` |
+
+Because each environment has its own branch, lock state is stored, inspected, and deleted independently. The Action never touches another environment's branch when operating on a specific target.
+
+## Default environment configuration
+
+Two inputs control environment behavior:
+
+- **`environment`** — the default environment used when no explicit target is specified in an IssueOps comment.
+- **`environment_targets`** — a comma-separated list of all valid environment names. Only environments in this list can be targeted via IssueOps commands.
+
+The built-in defaults are:
+
+```yaml
+environment: production
+environment_targets: "production,development,staging"
+```
+
+## Configuring custom environments
+
+To add environments beyond the defaults, update both inputs in your workflow:
+
+```yaml
+- uses: github/lock@vX.X.X
+  id: lock
+  with:
+    environment: production
+    environment_targets: "production,staging,development,canary"
+```
+
+<Tip>
+Keep `environment_targets` in sync with the environments your deployment workflows actually use. If a user tries to target an environment not in the list, the Action will post an error comment listing the valid options.
+</Tip>
+
+## Targeting environments in IssueOps mode
+
+When the Action is triggered by a pull request comment, users specify the environment as part of the command:
+
+```bash
+# Lock a specific environment
+.lock production
+.lock staging
+
+# Unlock a specific environment
+.unlock production
+.unlock staging
+
+# Lock with a reason
+.lock production --reason "deploying v2 release"
+```
+
+If no environment is specified in the comment, the Action uses the value from the `environment` input as the default:
+
+```bash
+# Uses the default environment (e.g., production)
+.lock
+.unlock
+```
+
+<Note>
+The Action validates the environment in the comment against the `environment_targets` list. If the specified environment is not in the list, the request is rejected and a comment is posted with the valid targets.
+</Note>
+
+## Environment isolation
+
+<CardGroup cols={2}>
+  <Card title="Independent ownership" icon="user">
+    Each environment lock is owned independently. Locking `production` does not prevent another user from locking `staging`. Different team members can hold locks on different environments at the same time.
+  </Card>
+  <Card title="Independent lifecycle" icon="arrows-split-up-and-left">
+    Acquiring, checking, and releasing a lock on one environment never reads or modifies any other environment's lock branch. Operations are always scoped to the target environment.
+  </Card>
+</CardGroup>
+
+## The special `global` environment
+
+The `global` environment is a reserved name that locks **all** environments simultaneously rather than a single one. Unlike regular environments, it does not need to be added to `environment_targets`.
+
+```bash
+# Lock all environments at once
+.lock --global
+
+# Unlock all environments
+.unlock --global
+```
+
+<Warning>
+When a global lock is active, no other user can lock or deploy to **any** environment — including environments not explicitly named in `environment_targets`. Only the global lock owner is exempt.
+</Warning>
+
+See [Global locks](/concepts/global-locks) for full details on how global locking works.
+
+## Related concepts
+
+<CardGroup cols={2}>
+  <Card title="How locks work" icon="lock" href="/concepts/how-locks-work">
+    Understand the Git-based storage mechanism behind environment locks and the full lock lifecycle.
+  </Card>
+  <Card title="Global locks" icon="globe" href="/concepts/global-locks">
+    Learn when and how to use a global lock to freeze all environments simultaneously.
+  </Card>
+</CardGroup>

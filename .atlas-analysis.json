@@ -1,0 +1,94 @@
+{
+  "projectType": "general",
+  "projectName": "Lock Action",
+  "projectDescription": "A GitHub Action for deployment locking that prevents concurrent deployments by managing lock state via branches, supporting IssueOps commands and headless/programmatic workflows.",
+  "theme": "aspen",
+  "primaryColor": "#2d333b",
+  "lightColor": "#444d56",
+  "darkColor": "#1b1f23",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Usage",
+            "pages": [
+              "usage/issueops",
+              "usage/headless",
+              "usage/checking-locks"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/inputs",
+              "configuration/outputs",
+              "configuration/permissions"
+            ]
+          },
+          {
+            "group": "Concepts",
+            "pages": [
+              "concepts/how-locks-work",
+              "concepts/environments",
+              "concepts/global-locks"
+            ]
+          },
+          {
+            "group": "Resources",
+            "pages": [
+              "resources/examples",
+              "resources/troubleshooting",
+              "resources/contributing"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "IssueOps-based lock/unlock via PR comments (.lock, .unlock)",
+    "Headless mode for programmatic lock/unlock via workflow dispatch",
+    "Multi-environment support with per-environment locks",
+    "Global lock that blocks all environments simultaneously",
+    "Lock status check mode with rich output variables",
+    "Sticky locks that persist until explicitly released",
+    "Reaction-based acknowledgement on PR comments",
+    "Automatic permission validation (admin/write required)"
+  ],
+  "publicApiSurface": [
+    "input: github_token",
+    "input: environment",
+    "input: environment_targets",
+    "input: lock_trigger",
+    "input: unlock_trigger",
+    "input: lock_info_alias",
+    "input: global_lock_flag",
+    "input: prefix_only",
+    "input: mode (lock | unlock | check)",
+    "input: reaction",
+    "input: reason",
+    "output: triggered",
+    "output: comment_id",
+    "output: type",
+    "output: comment_body",
+    "output: headless",
+    "output: locked",
+    "output: lock_environment",
+    "output: branch",
+    "output: created_by",
+    "output: created_at",
+    "output: reason",
+    "output: link",
+    "output: global_lock_claimed",
+    "output: global_lock_released"
+  ]
+}

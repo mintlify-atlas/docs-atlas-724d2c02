@@ -1,0 +1,101 @@
+---
+title: "Permissions"
+description: "GitHub Actions permissions and repository collaborator permissions required to use the Lock Action."
+---
+
+The Lock Action requires two distinct layers of permissions: **GitHub Actions job permissions** (what the workflow token can do) and **repository collaborator permissions** (what the triggering user is allowed to do).
+
+## Actions job permissions
+
+Set permissions in your workflow file at either the job level or the workflow level. Job-level permissions override workflow-level permissions for that specific job.
+
+<Tabs>
+  <Tab title="IssueOps mode">
+    IssueOps mode requires the ability to post comments and add reactions to pull requests, as well as write access to create and delete the Git branches used to store lock state.
+
+    ```yaml
+    permissions:
+      pull-requests: write
+      contents: write
+    ```
+  </Tab>
+  <Tab title="Headless lock / unlock">
+    Headless lock and unlock operations only need to create and delete Git branches. No pull request interaction is required.
+
+    ```yaml
+    permissions:
+      contents: write
+    ```
+  </Tab>
+  <Tab title="Headless check">
+    Check mode is read-only. It only reads branch data to determine lock state and never writes anything.
+
+    ```yaml
+    permissions:
+      contents: read
+    ```
+  </Tab>
+</Tabs>
+
+### Why `contents: write`?
+
+The Lock Action stores lock state as lightweight Git branches in your repository (for example, `production-branch-deploy-lock`). Creating and deleting these branches requires write access to repository contents. This approach keeps lock state durable, auditable, and visible directly in your repository without requiring any external storage.
+
+### Why `pull-requests: write`?
+
+In IssueOps mode the Action posts comments back to the pull request (for example, confirming that a lock was claimed) and adds emoji reactions to the triggering comment. Both operations require write access to pull requests.
+
+### Setting permissions at the job level
+
+Prefer job-level permissions to follow the principle of least privilege, especially in workflows that perform multiple unrelated tasks.
+
+```yaml
+jobs:
+  lock:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: write
+    steps:
+      - uses: github/lock@vX.X.X
+        with:
+          environment: production
+```
+
+### Setting permissions at the workflow level
+
+You can also set permissions at the top of your workflow file. These apply to all jobs unless overridden at the job level.
+
+```yaml
+permissions:
+  pull-requests: write
+  contents: write
+
+jobs:
+  lock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: github/lock@vX.X.X
+```
+
+<Warning>Workflow-level `permissions: write-all` grants broader access than necessary. Prefer explicit, minimal permissions scoped to the job.</Warning>
+
+## Repository collaborator permissions
+
+In addition to Actions job permissions, the Action enforces a collaborator permission check on the user who triggered the workflow. This check is independent of the token permissions above.
+
+**A user must have `write` or `admin` permission on the repository to claim or release a lock via IssueOps.**
+
+This check is performed via the GitHub API and applies only to IssueOps mode: the author of the pull request comment is validated before any lock operation proceeds.
+
+Users with `read` permission (or no access) cannot claim a lock through IssueOps, even if the workflow token itself has write access.
+
+### What happens when a user lacks permission
+
+When the permission check fails in IssueOps mode, the Action posts a comment on the pull request explaining that the user does not have the required permissions, and exits without modifying any lock state.
+
+Example message posted by the Action:
+
+> 👋 `username`, seems as if you have not admin/write permissions in this repo, permissions: read
+
+<Note>This collaborator permission check is an application-level guard enforced by the Action's own logic, not by GitHub's token permission system. In headless mode, the Action does not perform this check — access is controlled entirely by the GitHub Actions token and who can trigger the workflow.</Note>

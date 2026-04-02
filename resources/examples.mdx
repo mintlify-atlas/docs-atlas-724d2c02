@@ -1,0 +1,241 @@
+---
+title: 'Examples'
+description: 'Complete, ready-to-use workflow examples for common deployment locking scenarios.'
+---
+
+This page provides copy-paste workflow examples covering the most common ways to use the `github/lock` Action. Replace `vX.X.X` with the latest release tag.
+
+## Example 1: IssueOps lock/unlock on PR comments
+
+Trigger lock and unlock operations by commenting `.lock` or `.unlock` on a pull request. This is the most common usage pattern and requires no `mode` input.
+
+```yaml
+name: lock-or-unlock
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  pull-requests: write
+  contents: write
+
+jobs:
+  lock-or-unlock:
+    if: ${{ github.event.issue.pull_request }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: github/lock@vX.X.X
+        id: lock
+```
+
+<Note>
+The `if: ${{ github.event.issue.pull_request }}` condition ensures the workflow only runs on pull request comments, not on issue comments.
+</Note>
+
+Once set up, contributors can:
+- Comment `.lock` to claim the deployment lock for the current PR's environment
+- Comment `.unlock` to release the lock
+- Comment `.wcid` (or your configured `lock_info_alias`) to view current lock details
+
+## Example 2: Workflow dispatch with mode selection
+
+Allow users to manually choose between `lock`, `unlock`, and `check` modes via the GitHub Actions UI.
+
+```yaml
+name: lock-dispatch
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Reason for claiming the deployment lock'
+        required: false
+      environment:
+        description: 'The environment (production, staging, etc)'
+        required: true
+        default: 'production'
+      mode:
+        description: 'The mode: check, lock, unlock'
+        required: true
+        default: 'lock'
+
+permissions:
+  contents: write
+
+jobs:
+  lock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: github/lock@vX.X.X
+        id: lock
+        with:
+          mode: ${{ github.event.inputs.mode }}
+          reason: ${{ github.event.inputs.reason }}
+          environment: ${{ github.event.inputs.environment }}
+```
+
+<Tip>
+Use `environment: global` to lock all environments at once with a single dispatch.
+</Tip>
+
+## Example 3: Scheduled lock window
+
+Automatically lock deployments at the start of a weekend freeze and unlock them at the start of the work week.
+
+```yaml
+name: weekend-lock
+
+on:
+  schedule:
+    - cron: '0 17 * * 5'  # 5pm Friday
+
+permissions:
+  contents: write
+
+jobs:
+  lock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: github/lock@vX.X.X
+        with:
+          mode: lock
+          environment: global
+          reason: "Weekend deployment freeze"
+```
+
+Create a companion workflow to unlock on Monday morning:
+
+```yaml
+name: weekend-unlock
+
+on:
+  schedule:
+    - cron: '0 9 * * 1'  # 9am Monday
+
+permissions:
+  contents: write
+
+jobs:
+  unlock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: github/lock@vX.X.X
+        with:
+          mode: unlock
+          environment: global
+```
+
+<Note>
+Cron expressions in GitHub Actions use UTC. Adjust the times to match your team's timezone.
+</Note>
+
+## Example 4: Conditional lock on test failure
+
+Automatically lock the production environment if your test suite is failing, preventing broken code from being deployed.
+
+```yaml
+name: conditional-lock
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  test-and-maybe-lock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run tests
+        id: tests
+        run: npm test
+        continue-on-error: true
+
+      - name: Lock if tests failed
+        if: steps.tests.outcome == 'failure'
+        uses: github/lock@vX.X.X
+        with:
+          mode: lock
+          environment: production
+          reason: "Automated lock: test suite is failing"
+```
+
+<Warning>
+Remember to also add a workflow that unlocks the environment once tests pass again, or use the workflow dispatch example to manually release the lock.
+</Warning>
+
+## Example 5: Check lock before deploying
+
+Gate a deployment job on whether an active lock exists. If the environment is locked, abort with a clear message.
+
+```yaml
+name: deploy-with-lock-check
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: github/lock@vX.X.X
+        id: lock-check
+        with:
+          mode: check
+          environment: production
+
+      - name: Abort if locked
+        if: steps.lock-check.outputs.locked == 'true'
+        run: |
+          echo "Deployment blocked! Lock held by ${{ steps.lock-check.outputs.created_by }}"
+          echo "Reason: ${{ steps.lock-check.outputs.reason }}"
+          exit 1
+
+      - name: Deploy
+        if: steps.lock-check.outputs.locked == 'false'
+        run: echo "Deploying..."
+```
+
+The `check` mode sets several outputs you can use in subsequent steps:
+
+| Output | Description |
+| ------ | ----------- |
+| `locked` | `"true"` if a lock exists, `"false"` otherwise |
+| `created_by` | The GitHub username holding the lock |
+| `created_at` | ISO 8601 timestamp when the lock was claimed |
+| `reason` | The reason provided when the lock was claimed |
+| `branch` | The branch name associated with the lock |
+| `link` | URL to the comment or run that created the lock |
+
+## Example 6: Unlock via workflow dispatch
+
+A simple dedicated workflow for releasing a lock manually, useful as an escape hatch for administrators.
+
+```yaml
+name: unlock
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  unlock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: github/lock@vX.X.X
+        with:
+          mode: unlock
+```
+
+<Tip>
+To unlock a specific environment, add an `environment` input to the workflow dispatch (see Example 2) and pass it to the `environment` input of the Action.
+</Tip>

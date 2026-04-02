@@ -1,0 +1,162 @@
+---
+title: "Checking lock status"
+description: "Query the current lock state and use the results in downstream workflow steps."
+keywords: ["check", "lock status", "outputs", "locked", "headless", "conditional deployment"]
+---
+
+`mode: check` lets you read the current lock state for an environment without modifying it. The Action exports details about the lock as step outputs, which you can reference in subsequent steps to gate deployments, send notifications, or branch on lock state.
+
+## What check mode does
+
+When `mode` is set to `check`, the Action:
+
+1. Checks whether a global lock exists
+2. If no global lock exists, checks for an environment-specific lock
+3. Sets the `locked` output to `"true"` or `"false"`
+4. If a lock is held, populates the remaining outputs with details about it
+5. Exits without creating, modifying, or deleting any lock
+
+Check mode is read-only. It requires only `contents: read`.
+
+## Basic setup
+
+```yaml
+name: lock-check
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lock-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: github/lock@vX.X.X
+        id: lock
+        with:
+          mode: check
+
+      - name: Print lock status
+        run: |
+          echo "Lock status: ${{ steps.lock.outputs.locked }}"
+          echo "Lock environment: ${{ steps.lock.outputs.lock_environment }}"
+          echo "Locked by: ${{ steps.lock.outputs.created_by }}"
+```
+
+<Note>
+Give the step an `id` (here: `lock`) so you can reference its outputs later using `steps.lock.outputs.<name>`.
+</Note>
+
+## Outputs
+
+| Output | Type | Description |
+|---|---|---|
+| `locked` | `"true"` / `"false"` | Whether a lock is currently held |
+| `lock_environment` | string | The environment that holds the lock (e.g. `production`, `global`) |
+| `branch` | string | The branch that claimed the lock, or `"headless mode"` if claimed programmatically |
+| `created_by` | string | The GitHub username of the user or actor that claimed the lock |
+| `created_at` | string | ISO 8601 timestamp of when the lock was claimed |
+| `reason` | string | The reason provided when the lock was claimed, or empty if none was given |
+| `link` | string | URL to the PR comment or Actions run that claimed the lock |
+| `headless` | `"true"` | Always `"true"` in check mode |
+
+All outputs are empty strings when `locked` is `"false"`, except for `headless` and `locked` themselves.
+
+## Using outputs in downstream steps
+
+Reference outputs with `${{ steps.<id>.outputs.<name> }}`:
+
+```yaml
+steps:
+  - uses: github/lock@vX.X.X
+    id: lock
+    with:
+      mode: check
+
+  - name: Show who holds the lock
+    if: steps.lock.outputs.locked == 'true'
+    run: |
+      echo "${{ steps.lock.outputs.created_by }} has held the ${{ steps.lock.outputs.lock_environment }} lock since ${{ steps.lock.outputs.created_at }}"
+      echo "Reason: ${{ steps.lock.outputs.reason }}"
+      echo "Link: ${{ steps.lock.outputs.link }}"
+```
+
+## Conditional deployment example
+
+Gate a deployment step on whether the environment is unlocked:
+
+```yaml
+name: deploy
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: github/lock@vX.X.X
+        id: lock
+        with:
+          mode: check
+          environment: production
+
+      - name: Fail if locked
+        if: steps.lock.outputs.locked == 'true'
+        run: |
+          echo "Deployment blocked: production is locked by ${{ steps.lock.outputs.created_by }}"
+          echo "Reason: ${{ steps.lock.outputs.reason }}"
+          exit 1
+
+      - name: Deploy
+        if: steps.lock.outputs.locked == 'false'
+        run: echo "Deploying to production..."
+```
+
+<Tip>
+You can also use `continue-on-error: false` and let the step fail naturally, then inspect `steps.lock.outputs.locked` in a notification step to send an alert when a deployment is blocked.
+</Tip>
+
+## Checking the global lock
+
+Set `environment: global` to check whether a global lock is held:
+
+```yaml
+- uses: github/lock@vX.X.X
+  id: lock
+  with:
+    mode: check
+    environment: global
+```
+
+If a global lock exists, `locked` will be `"true"` and `lock_environment` will be `"global"`. If no global lock exists, `locked` is `"false"` regardless of any environment-specific locks.
+
+<Note>
+Check mode always checks for a global lock first, even when a specific environment is requested. If a global lock is found, `locked` is `"true"` and `lock_environment` is `"global"` — the environment-specific check is skipped.
+</Note>
+
+## Checking a specific environment
+
+```yaml
+- uses: github/lock@vX.X.X
+  id: lock
+  with:
+    mode: check
+    environment: staging
+```
+
+This checks for a `staging` lock (after first verifying no global lock is held). If a global lock exists, that takes precedence and `lock_environment` will be `"global"`.
+
+<CardGroup cols={2}>
+  <Card title="IssueOps usage" icon="comment" href="/usage/issueops">
+    Trigger lock commands from PR comments.
+  </Card>
+  <Card title="Headless mode" icon="terminal" href="/usage/headless">
+    Lock and unlock programmatically with the `mode` input.
+  </Card>
+</CardGroup>

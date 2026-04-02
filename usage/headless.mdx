@@ -1,0 +1,197 @@
+---
+title: "Headless mode"
+description: "Use the Lock Action programmatically without a PR comment trigger."
+keywords: ["headless", "mode", "lock", "unlock", "workflow dispatch", "programmatic", "conditional"]
+---
+
+Headless mode lets you use the Lock Action without a pull request comment. Instead of waiting for an IssueOps trigger, you set the `mode` input directly, and the Action executes immediately with whatever environment and reason you specify.
+
+This is useful for:
+
+- Manually locking or unlocking via `workflow_dispatch`
+- Locking environments on a schedule
+- Conditionally setting a lock when tests fail or a deploy is unstable
+- Scripting lock management as part of a larger pipeline
+
+## The `mode` input
+
+Set `mode` to one of three values:
+
+| Value | Behavior |
+|---|---|
+| `lock` | Claims the deployment lock for the specified environment |
+| `unlock` | Releases the deployment lock for the specified environment |
+| `check` | Reads the current lock state and exports outputs — does not modify the lock |
+
+When `mode` is set, the Action skips all comment-parsing logic and runs directly in headless mode. The `headless` output will always be `"true"` in this case.
+
+<Note>
+If `mode` is omitted, the Action assumes it was triggered by a PR comment and tries to read `context.payload.comment.body`. Omitting `mode` in a non-comment workflow will cause the run to fail.
+</Note>
+
+## Locking via `workflow_dispatch`
+
+The most common headless pattern is a manually triggered workflow that accepts `mode`, `environment`, and `reason` as inputs:
+
+```yaml
+name: lock-dispatch
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Reason for claiming the deployment lock'
+        required: false
+      environment:
+        description: 'The environment to claim a lock for'
+        required: true
+        default: 'production'
+      mode:
+        description: 'The mode to use: check, lock, unlock'
+        required: true
+        default: 'lock'
+
+permissions:
+  contents: write
+
+jobs:
+  lock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: github/lock@vX.X.X
+        id: lock
+        with:
+          mode: ${{ github.event.inputs.mode }}
+          reason: ${{ github.event.inputs.reason }}
+          environment: ${{ github.event.inputs.environment }}
+```
+
+This single workflow handles locking, unlocking, and checking — controlled entirely by the `mode` input at dispatch time.
+
+### Required permissions
+
+`contents: write` is required for `lock` and `unlock` modes. For `check` mode, `contents: read` is sufficient.
+
+## Unlocking explicitly
+
+If you want a dedicated unlock workflow:
+
+```yaml
+name: unlock
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  unlock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: github/lock@vX.X.X
+        id: lock
+        with:
+          mode: unlock
+          environment: production
+```
+
+## The `reason` input
+
+In headless mode, pass a reason string via the `reason` input. This is stored in the lock file and visible in lock detail responses.
+
+```yaml
+with:
+  mode: lock
+  environment: production
+  reason: "scheduled maintenance window"
+```
+
+If `reason` is omitted or empty, the lock is claimed without a reason.
+
+## Conditional locking
+
+You can lock an environment conditionally based on the outcome of a previous step. For example, locking production when tests fail badly enough that deploys should be paused:
+
+```yaml
+name: test-and-maybe-lock
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run tests
+        id: tests
+        run: npm test
+        continue-on-error: true
+
+      - uses: github/lock@vX.X.X
+        if: steps.tests.outcome == 'failure'
+        with:
+          mode: lock
+          environment: production
+          reason: "automated lock - test suite is failing on main"
+```
+
+<Warning>
+Automated conditional locks should always include a `reason` so teammates know why deployments are paused and who to contact.
+</Warning>
+
+## Global lock in headless mode
+
+To lock all environments at once in headless mode, set `environment: global`:
+
+```yaml
+- uses: github/lock@vX.X.X
+  with:
+    mode: lock
+    environment: global
+    reason: "maintenance window - all environments locked"
+```
+
+To release the global lock:
+
+```yaml
+- uses: github/lock@vX.X.X
+  with:
+    mode: unlock
+    environment: global
+```
+
+## Outputs in headless mode
+
+The `headless` output is always `"true"` when `mode` is set. Other outputs depend on the mode used:
+
+| Output | Available in | Description |
+|---|---|---|
+| `headless` | All modes | Always `"true"` in headless mode |
+| `locked` | `check` only | `"true"` if a lock is currently held |
+| `lock_environment` | `check` only | The environment that holds the lock |
+| `branch` | `check` only | The branch that holds the lock |
+| `created_by` | `check` only | The user who claimed the lock |
+| `created_at` | `check` only | ISO 8601 timestamp of when the lock was claimed |
+| `reason` | `check` only | The reason the lock was claimed |
+| `link` | `check` only | Link to the run or comment that claimed the lock |
+| `global_lock_claimed` | `lock` | `"true"` if a global lock was just claimed |
+| `global_lock_released` | `unlock` | `"true"` if a global lock was just released |
+
+For a detailed walkthrough of `check` mode and how to use its outputs in downstream steps, see [Checking lock status](/usage/checking-locks).
+
+<CardGroup cols={2}>
+  <Card title="IssueOps usage" icon="comment" href="/usage/issueops">
+    Trigger lock commands from PR comments.
+  </Card>
+  <Card title="Checking lock status" icon="circle-check" href="/usage/checking-locks">
+    Read lock state and gate downstream steps on it.
+  </Card>
+</CardGroup>

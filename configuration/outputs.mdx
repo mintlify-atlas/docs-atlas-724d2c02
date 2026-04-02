@@ -1,0 +1,105 @@
+---
+title: "Outputs"
+description: "Output values produced by the github/lock Action, available to subsequent steps in your workflow."
+---
+
+Access outputs from the Lock Action using the standard GitHub Actions expression syntax: `${{ steps.<step-id>.outputs.<output-name> }}`. Give your Lock Action step an `id` to reference its outputs downstream.
+
+## General outputs
+
+These outputs are available in all modes.
+
+<ResponseField name="triggered" type="string">
+  `"true"` if a recognized IssueOps trigger was found in the PR comment (lock, unlock, or lock-info alias), `"false"` if no trigger matched. This output is only meaningful in IssueOps mode — in headless mode the Action bypasses trigger detection entirely.
+</ResponseField>
+
+<ResponseField name="headless" type="string">
+  `"true"` if the Action ran in headless mode (the `mode` input was set), `"false"` if it was triggered by an IssueOps pull request comment.
+</ResponseField>
+
+<ResponseField name="type" type="string">
+  The kind of trigger that was detected. One of:
+
+  - `"lock"` — a lock operation was triggered
+  - `"unlock"` — an unlock operation was triggered
+  - `"lock-info-alias"` — the lock info alias was used to query lock status
+
+  Empty when `triggered` is `"false"`.
+</ResponseField>
+
+<ResponseField name="global_lock_claimed" type="string">
+  `"true"` if a global lock was successfully claimed during this run, otherwise empty.
+</ResponseField>
+
+<ResponseField name="global_lock_released" type="string">
+  `"true"` if the global lock was successfully released during this run, otherwise empty.
+</ResponseField>
+
+## IssueOps-only outputs
+
+These outputs are populated only when the Action runs in IssueOps mode (no `mode` input set).
+
+<ResponseField name="comment_id" type="string">
+  The numeric ID of the pull request comment that triggered the Action. Useful for replying to or updating the triggering comment in a later step.
+</ResponseField>
+
+<ResponseField name="comment_body" type="string">
+  The full text body of the comment that triggered the Action.
+</ResponseField>
+
+## Check mode outputs
+
+The following outputs are only populated when `mode: check` is set. Use them to make conditional decisions in your workflow based on the current lock state.
+
+<ResponseField name="locked" type="string">
+  `"true"` if a lock currently exists for the configured environment, `"false"` if no lock is held.
+</ResponseField>
+
+<ResponseField name="lock_environment" type="string">
+  The name of the environment that holds the lock. Useful when checking the global lock, which may span multiple named environments.
+</ResponseField>
+
+<ResponseField name="branch" type="string">
+  The name of the Git branch that was active when the lock was claimed.
+</ResponseField>
+
+<ResponseField name="created_by" type="string">
+  The GitHub username of the person who claimed the lock.
+</ResponseField>
+
+<ResponseField name="created_at" type="string">
+  The ISO 8601 timestamp of when the lock was claimed, for example `2024-03-15T14:32:00Z`.
+</ResponseField>
+
+<ResponseField name="reason" type="string">
+  The reason provided when the lock was claimed. Empty if no reason was given.
+</ResponseField>
+
+<ResponseField name="link" type="string">
+  A URL to the GitHub issue comment or Actions workflow run that claimed the lock. Links directly to the source event for audit purposes.
+</ResponseField>
+
+## Usage example
+
+```yaml
+- uses: github/lock@vX.X.X
+  id: lock
+  with:
+    mode: check
+    environment: production
+
+- name: Use lock outputs
+  run: |
+    echo "Locked: ${{ steps.lock.outputs.locked }}"
+    echo "Held by: ${{ steps.lock.outputs.created_by }}"
+    echo "Since: ${{ steps.lock.outputs.created_at }}"
+
+- name: Block deployment if locked
+  if: steps.lock.outputs.locked == 'true'
+  run: |
+    echo "Environment is locked by ${{ steps.lock.outputs.created_by }}"
+    echo "Reason: ${{ steps.lock.outputs.reason }}"
+    exit 1
+```
+
+<Tip>Always assign an `id` to your Lock Action step so you can reference its outputs in later steps using `steps.<id>.outputs.<name>`.</Tip>

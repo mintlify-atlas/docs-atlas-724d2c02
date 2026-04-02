@@ -1,0 +1,189 @@
+---
+title: 'Troubleshooting'
+description: 'Solutions to common issues encountered when using the github/lock Action.'
+---
+
+Use the sections below to diagnose and resolve common problems.
+
+<AccordionGroup>
+
+  <Accordion title='"Cannot claim deployment lock — lock already held"'>
+    This error appears when another user has already claimed the lock for the requested environment.
+
+    **What is happening:**
+    The Action found an existing lock file on the lock branch for your environment. Only the current lock owner (or an admin performing a headless unlock) can release it.
+
+    **How to resolve:**
+
+    1. Check who holds the lock by commenting `.wcid` (or your configured `lock_info_alias`) on the pull request. The Action will reply with lock details that look like this:
+
+       ```
+       ### Lock Details 🔒
+
+       The deployment lock is currently claimed by __octocat__
+
+       - __Reason__: `hotfix release`
+       - __Branch__: `my-feature-branch`
+       - __Created At__: `2024-01-15T14:30:00.000Z`
+       - __Created By__: `octocat`
+       - __Sticky__: `true`
+       - __Environment__: `production`
+       - __Comment Link__: click here
+       - __Lock Link__: click here
+
+       The current lock has been active for `2 hours, 15 minutes`
+
+       > If you need to release the lock, please comment `.unlock production`
+       ```
+
+    2. Ask the lock owner to comment `.unlock` (or `.unlock <environment>`) on the PR.
+
+    3. If the lock owner is unavailable and you have admin access to the repository, use a headless workflow dispatch to force-unlock:
+
+       ```yaml
+       - uses: github/lock@vX.X.X
+         with:
+           mode: unlock
+           environment: production
+       ```
+
+    <Note>
+    The Action itself enforces ownership — you cannot unlock someone else's lock through IssueOps unless you are the lock owner or running a headless workflow with appropriate token permissions.
+    </Note>
+  </Accordion>
+
+  <Accordion title='"Permission denied" or action fails with permission error'>
+    The user who triggered the Action must have **`admin`** or **`write`** collaboration permission on the repository.
+
+    **What is happening:**
+    The Action calls the GitHub Collaborator Permission API to verify the triggering user's permission level before processing any lock or unlock request. This check is independent of the workflow's token permissions.
+
+    **How to resolve:**
+
+    - Confirm the user is a direct collaborator (or a member of a team with write access) on the repository.
+    - Organization-level read-only members do not have sufficient permission.
+    - Outside collaborators must be explicitly granted `write` or `admin` access.
+
+    <Warning>
+    Granting repository access is a security-sensitive operation. Confirm with your repository administrators before changing permission levels.
+    </Warning>
+  </Accordion>
+
+  <Accordion title='Lock branch not deleted after unlock'>
+    After a successful `.unlock` or headless `mode: unlock` run, the lock branch should be deleted. If it persists, the workflow token is missing the required `contents: write` permission.
+
+    **What is happening:**
+    The `unlock` function calls `deleteRef` on the lock branch via the GitHub API. If the token does not have write access to repository contents, this API call fails.
+
+    **How to resolve:**
+
+    Ensure your workflow includes the correct permissions block:
+
+    ```yaml
+    permissions:
+      contents: write
+    ```
+
+    If you are using a custom `github_token` input, confirm that the token has the `repo` scope (for classic tokens) or `contents: write` (for fine-grained tokens).
+
+    The Action logs a message like `failed to delete lock branch: production-branch-deploy-lock - HTTP: 403` when this occurs. Check the Actions run log for that message.
+  </Accordion>
+
+  <Accordion title='Trigger not detected (triggered: false)'>
+    The Action exits early with `triggered: false` when it cannot match the comment body against the configured trigger strings.
+
+    **Common causes and fixes:**
+
+    **`prefix_only` is `true` (default) but the trigger is not at the start of the comment.**
+
+    The default configuration requires the trigger (`.lock`, `.unlock`) to appear at the very beginning of the comment. If a user types anything before the trigger, it will not match.
+
+    To allow the trigger to appear anywhere in the comment, set:
+
+    ```yaml
+    - uses: github/lock@vX.X.X
+      with:
+        prefix_only: 'false'
+    ```
+
+    **The `lock_trigger` or `unlock_trigger` values do not match what users are typing.**
+
+    The inputs default to `.lock` and `.unlock`. If you have customized these, verify that users are typing the exact string you configured (case-sensitive). Leading and trailing spaces in the comment are trimmed automatically, but internal spaces within the trigger string are significant.
+
+    **The workflow is not triggered for the `issue_comment` event.**
+
+    Check your `on:` block includes:
+
+    ```yaml
+    on:
+      issue_comment:
+        types: [created]
+    ```
+  </Accordion>
+
+  <Accordion title='Environment target not found'>
+    When using IssueOps commands like `.lock canary`, the Action must be able to match `canary` against the configured `environment_targets`.
+
+    **What is happening:**
+    The `environmentTargets` function parses the comment body to extract the target environment name and validates it against the comma-separated list in the `environment_targets` input.
+
+    The default value is `"production,development,staging"`. If you use a custom environment name, you must add it to this list.
+
+    **How to resolve:**
+
+    ```yaml
+    - uses: github/lock@vX.X.X
+      with:
+        environment_targets: 'production,development,staging,canary,eu-west'
+    ```
+
+    After this change, users can run `.lock canary` or `.lock eu-west` from a PR comment.
+  </Accordion>
+
+  <Accordion title='Action runs on non-PR issue comments'>
+    By default, `issue_comment` events fire for comments on both issues and pull requests. Without an additional condition, the Action will attempt to run on issue comments, where it cannot function correctly (there is no PR ref to associate with the lock).
+
+    **How to resolve:**
+
+    Add the following `if` condition to the job:
+
+    ```yaml
+    jobs:
+      lock-or-unlock:
+        if: ${{ github.event.issue.pull_request }}
+        runs-on: ubuntu-latest
+        steps:
+          - uses: github/lock@vX.X.X
+    ```
+
+    This condition evaluates to `true` only when the comment was made on a pull request, skipping regular issue comments entirely.
+  </Accordion>
+
+  <Accordion title='Global lock not releasing'>
+    The global lock covers all environments simultaneously. Releasing it requires targeting the global environment explicitly.
+
+    **For IssueOps (PR comment):**
+
+    Comment using the global flag (default: `--global`):
+
+    ```
+    .unlock --global
+    ```
+
+    **For headless mode (workflow dispatch or scheduled):**
+
+    ```yaml
+    - uses: github/lock@vX.X.X
+      with:
+        mode: unlock
+        environment: global
+    ```
+
+    <Note>
+    The `global_lock_flag` input (default `--global`) controls the flag users must append to the unlock comment. If you have customized this, use your custom flag value instead.
+    </Note>
+
+    If neither approach works, check that the `contents: write` permission is present on the workflow token and that the lock branch `global-branch-deploy-lock` exists in the repository.
+  </Accordion>
+
+</AccordionGroup>
